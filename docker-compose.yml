@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ledger_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-real-deployments}
+      POSTGRES_DB: ${POSTGRES_DB:-cost_ledger}
+    ports:
+      - "55432:5432"  # non-default host port — this machine already runs other local Postgres instances
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ledger_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "63790:6379"  # non-default host port — this machine already runs other local Redis instances
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    image: cost-ledger-app:latest
+    env_file: .env
+    environment:
+      PYTHONPATH: /app/packages:/app/services:/app/simulation
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["alembic", "-c", "database/alembic.ini", "upgrade", "head"]
+
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    image: cost-ledger-app:latest
+    env_file: .env
+    environment:
+      PYTHONPATH: /app/packages:/app/services:/app/simulation
+    ports:
+      - "58000:8000"  # non-default host port — 8000 is already in use by another local project
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:58000}
+    ports:
+      - "53000:3000"  # non-default host port, consistent with the rest of this file
+    depends_on:
+      api:
+        condition: service_healthy
+
+  simulation:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    image: cost-ledger-app:latest
+    env_file: .env
+    environment:
+      PYTHONPATH: /app/packages:/app/services:/app/simulation
+      API_BASE_URL: http://api:8000  # in-network URL — .env's NEXT_PUBLIC_API_BASE_URL is host-side, for the browser
+    depends_on:
+      api:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "simulation.run_all"]
+    profiles: ["simulation"]
+
+volumes:
+  postgres_data:

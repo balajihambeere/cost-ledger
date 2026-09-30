@@ -1,0 +1,9 @@
+model_id,usage_type,actual_cost
+apac.anthropic.claude-sonnet-5,input,1200.00
+apac.anthropic.claude-sonnet-5,output,3400.00
+apac.anthropic.claude-sonnet-5,cache_write,150.00
+apac.anthropic.claude-sonnet-5,cache_read,40.00
+apac.anthropic.claude-haiku-4-5,input,300.00
+apac.anthropic.claude-haiku-4-5,output,900.00
+apac.anthropic.claude-haiku-4-5,cache_write,20.00
+apac.anthropic.claude-haiku-4-5,cache_read,8.00
